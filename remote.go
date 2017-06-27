@@ -3,23 +3,31 @@ package lxdhelpers
 import (
 	"fmt"
 
-	"github.com/lxc/lxd"
+	lxd "github.com/lxc/lxd/client"
+	"github.com/lxc/lxd/shared/api"
 )
 
-func ValidateRemoteConnection(client *lxd.Client, remote string, password string) error {
+func ValidateRemoteConnection(client lxd.ContainerServer, remote string, password string) error {
+	srv, _, err := client.GetServer()
 	// See if the client is already trusted to the server
-	if client.AmTrusted() {
+	if srv.Auth == "trusted" {
 		return nil
 	}
 
-	// If not, try to authenticate with it
-	if err := client.AddMyCertToServer(password); err != nil {
+	req := api.CertificatesPost{
+		Password: password,
+	}
+	req.Type = "client"
+
+	err = client.CreateCertificate(req)
+	if err != nil {
 		return fmt.Errorf("Unable to authenticate with remote server: %s", err)
 	}
 
 	// Validate client before returning
-	if _, err := client.GetServerConfig(); err != nil {
-		return err
+	srv, _, err = client.GetServer()
+	if srv.Auth == "trusted" {
+		return nil
 	}
 
 	return nil
