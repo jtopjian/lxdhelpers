@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/lxc/lxd"
+	lxd "github.com/lxc/lxd/client"
+	lxd_config "github.com/lxc/lxd/lxc/config"
 	"github.com/lxc/lxd/shared"
 )
 
-func ValidateClientCertificates(lxdConfig lxd.Config, generateCertificates bool) error {
+func ValidateClientCertificates(lxdConfig *lxd_config.Config, generateCertificates bool) error {
 	certf := lxdConfig.ConfigPath("client.crt")
 	keyf := lxdConfig.ConfigPath("client.key")
 
@@ -27,15 +28,15 @@ func ValidateClientCertificates(lxdConfig lxd.Config, generateCertificates bool)
 	return nil
 }
 
-func GetRemoteCertificate(client *lxd.Client, remote string) (*lxd.Client, error) {
+func GetRemoteCertificate(conf *lxd_config.Config, remote string) (lxd.ContainerServer, error) {
 	var certificate *x509.Certificate
 	var err error
 
-	if _, ok := client.Config.Remotes[remote]; !ok {
-		return nil, fmt.Errorf("Remote %s not found in client configuration", remote)
+	if _, ok := conf.Remotes[remote]; !ok {
+		return nil, fmt.Errorf("Remote %s not found in configuration", remote)
 	}
 
-	addr := client.Config.Remotes[remote]
+	addr := conf.Remotes[remote]
 
 	tlsConfig, err := shared.GetTLSConfig("", "", "", nil)
 	if err != nil {
@@ -63,12 +64,12 @@ func GetRemoteCertificate(client *lxd.Client, remote string) (*lxd.Client, error
 
 	certificate = resp.TLS.PeerCertificates[0]
 
-	serverCertDir := client.Config.ConfigPath("servercerts")
+	serverCertDir := conf.ConfigPath("servercerts")
 	if err := os.MkdirAll(serverCertDir, 0750); err != nil {
 		return nil, fmt.Errorf("Could not create server cert dir: %s", err)
 	}
 
-	certf := fmt.Sprintf("%s/%s.crt", serverCertDir, client.Name)
+	certf := fmt.Sprintf("%s/%s.crt", serverCertDir, remote)
 	certOut, err := os.Create(certf)
 	if err != nil {
 		return nil, err
@@ -78,5 +79,5 @@ func GetRemoteCertificate(client *lxd.Client, remote string) (*lxd.Client, error
 	certOut.Close()
 
 	// Set up a new connection, this time with the remote certificate
-	return lxd.NewClient(&client.Config, remote)
+	return conf.GetContainerServer(remote)
 }
